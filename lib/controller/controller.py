@@ -54,6 +54,7 @@ from lib.utils.common import get_valid_filename, human_size, lstrip_once
 from lib.utils.file import FileUtils
 from lib.utils.pickle import pickle, unpickle
 from lib.utils.schemedet import detect_scheme
+from lib.analysis.analyzer import Analyzer
 
 
 class Controller:
@@ -78,7 +79,6 @@ class Controller:
             exit(1)
 
         self.__dict__ = {**indict, **vars(self)}
-        print(last_output)
 
     def _export(self, session_file):
         self.current_job -= 1
@@ -271,6 +271,11 @@ class Controller:
 
             finally:
                 self.targets.pop(0)
+
+        self.output.warning("\nScan Task Completed, Starting Deep Analysis ...")
+
+        analyzer = Analyzer(self.options, self.output, self.report)
+        analyzer.analysis_responses(self.results)
 
         self.output.warning("\nTask Completed")
 
