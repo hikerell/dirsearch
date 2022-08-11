@@ -28,9 +28,9 @@ from lib.connection.requester import Requester
 from lib.core.decorators import locked
 from lib.core.dictionary import Dictionary, get_blacklists
 from lib.core.exceptions import (
-    InvalidURLException, RequestException,
-    SkipTargetInterrupt, QuitInterrupt,
-    UnpicklingError,
+    InvalidRawRequest, InvalidURLException,
+    RequestException, SkipTargetInterrupt,
+    QuitInterrupt, UnpicklingError,
 )
 from lib.core.fuzzer import Fuzzer
 from lib.core.logger import enable_logging, logger
@@ -96,12 +96,16 @@ class Controller:
         self.output = output
 
         if self.options.raw_file:
-            self.options.update(
-                zip(
-                    ["urls", "httpmethod", "headers", "data"],
-                    parse_raw(self.options.raw_file),
+            try:
+                self.options.update(
+                    zip(
+                        ["urls", "httpmethod", "headers", "data"],
+                        parse_raw(self.options.raw_file),
+                    )
                 )
-            )
+            except InvalidRawRequest as e:
+                print(str(e))
+                exit(1)
         else:
             self.options.headers = {**DEFAULT_HEADERS, **self.options.headers}
 
@@ -169,7 +173,7 @@ class Controller:
                 if not FileUtils.can_write(self.options.log_file):
                     raise Exception
 
-                enable_logging(self.options.log_file)
+                enable_logging(self.options.log_file, self.options.log_file_size or 0)
 
             except Exception:
                 self.output.error(
@@ -213,32 +217,30 @@ class Controller:
         #  - *args[0]: lib.connection.Response() object
         #
         # error_callbacks callback values:
-        #  - *args[0]: requested path
-        #  - *args[1]: request's error message
+        #  - *args[0]: exception
         match_callbacks = (
-            self.match_callback, self.append_traffic_log, self.reset_consecutive_errors
+            self.match_callback, self.reset_consecutive_errors
         )
         not_found_callbacks = (
-            self.update_progress_bar, self.append_traffic_log, self.reset_consecutive_errors
+            self.update_progress_bar, self.reset_consecutive_errors
         )
         error_callbacks = (self.raise_error, self.append_error_log)
 
-        self.fuzzer = Fuzzer(
-            self.requester,
-            self.dictionary,
-            suffixes=self.options.suffixes,
-            prefixes=self.options.prefixes,
-            exclude_response=self.options.exclude_response,
-            threads=self.options.threads_count,
-            delay=self.options.delay,
-            crawl=self.options.crawl,
-            match_callbacks=match_callbacks,
-            not_found_callbacks=not_found_callbacks,
-            error_callbacks=error_callbacks,
-        )
-
         while self.targets:
             url = self.targets[0]
+            self.fuzzer = Fuzzer(
+                self.requester,
+                self.dictionary,
+                suffixes=self.options.suffixes,
+                prefixes=self.options.prefixes,
+                exclude_response=self.options.exclude_response,
+                threads=self.options.threads_count,
+                delay=self.options.delay,
+                crawl=self.options.crawl,
+                match_callbacks=match_callbacks,
+                not_found_callbacks=not_found_callbacks,
+                error_callbacks=error_callbacks,
+            )
 
             try:
                 self.set_target(url)
@@ -262,8 +264,7 @@ class Controller:
                 self.dictionary.reset()
 
                 if e.args:
-                    self.output.error(e.args[0])
-                    logger.exception(e.args[1])
+                    self.output.error(str(e))
 
             except QuitInterrupt as e:
                 self.output.error(e.args[0])
@@ -394,11 +395,9 @@ class Controller:
     def setup_reports(self):
         """Create report file"""
 
-        output_file = None
+        output_file = self.options.output_file
 
-        if self.options.output_file:
-            output_file = FileUtils.get_abs_path(self.options.output_file)
-        elif self.options.autosave_report:
+        if self.options.autosave_report and not output_file:
             if len(self.targets) > 1:
                 directory_path = self.setup_batch_reports()
                 filename = "BATCH" + self.get_output_extension()
@@ -415,7 +414,7 @@ class Controller:
                     self.report_path, get_valid_filename(f"{parsed.scheme}_{parsed.netloc}")
                 )
 
-            output_file = FileUtils.build_path(directory_path, filename)
+            output_file = FileUtils.get_abs_path((FileUtils.build_path(directory_path, filename)))
 
             if FileUtils.exists(output_file):
                 i = 2
@@ -497,7 +496,7 @@ class Controller:
 
         return True
 
-    def reset_consecutive_errors(self, *args):
+    def reset_consecutive_errors(self, response):
         self.consecutive_errors = 0
 
     def match_callback(self, response):
@@ -519,10 +518,10 @@ class Controller:
             )
         ):
             if response.redirect:
-                new_path = parse_path(response.redirect, queries=False, fragment=False)
+                new_path = clean_path(parse_path(response.redirect))
                 added_to_queue = self.recur_for_redirect(response.path, new_path)
             elif len(response.history):
-                old_path = parse_path(response.history[0], queries=False, fragment=False)
+                old_path = clean_path(parse_path(response.history[0]))
                 added_to_queue = self.recur_for_redirect(old_path, response.path)
             else:
                 added_to_queue = self.recur(response.path)
@@ -538,7 +537,7 @@ class Controller:
             self.results.append(response)
             self.report.save(self.results)
 
-    def update_progress_bar(self, *args):
+    def update_progress_bar(self, response):
         jobs_count = (
             len(self.options.subdirs) * (len(self.targets) - 1)
             + len(self.directories)
@@ -562,18 +561,6 @@ class Controller:
 
         if self.consecutive_errors > MAX_CONSECUTIVE_REQUEST_ERRORS:
             raise SkipTargetInterrupt("Too many request errors")
-
-    def append_traffic_log(self, response):
-        """Write request to log file"""
-
-        msg = f'"{self.options.httpmethod} {response.url}" {response.status}'
-
-        if response.redirect:
-            msg += f" - REDIRECT TO: {response.redirect}"
-
-        msg += f" (LENGTH: {response.length})"
-
-        logger.info(msg)
 
     def append_error_log(self, exception):
         logger.exception(exception)

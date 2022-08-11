@@ -23,7 +23,7 @@ import string
 from lib.utils.file import FileUtils
 
 # Version format: <major version>.<minor version>.<revision>[.<month>]
-VERSION = "0.4.2.7"
+VERSION = "0.4.2.8"
 
 BANNER = f"""
   _|. _ _  _  _  _ _|_    v{VERSION}
@@ -110,7 +110,7 @@ SOCKET_TIMEOUT = 6
 
 RATE_UPDATE_DELAY = 0.15
 
-MAX_DIFF_RATIO = 0.98
+MAX_MATCH_RATIO = 0.98
 
 ITER_CHUNK_SIZE = 1024 * 1024
 
