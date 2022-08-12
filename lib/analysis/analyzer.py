@@ -12,14 +12,14 @@ class Analyzer(object):
         self.options = options
         self.output = output
         self.report = report
-        self.should_save_features = False
+        self.should_save_features = True
 
     def analysis_responses(self, responses):
         self.output.warning('\nbuild features ...')
         features = self.build_features(responses)
 
         self.output.warning('\nanalysis features ...')
-        labels, results, cluster = identify404.identify_404(features)
+        labels, results, cluster = identify404.identify_404_by_dbscan(features)
 
         self.output.warning("\nIdentify404 give cluster information:")
         self.output.warning("\n" + json.dumps(cluster, indent=4))
@@ -37,7 +37,12 @@ class Analyzer(object):
         for response in existed_responses:
             self.output.status_report(response, response.url)
 
-        self.report.save()
+        # 将相关信息记录在日志中
+        information = "\nIdentify404 give cluster information:\n"
+        information += json.dumps(cluster, indent=4) + "\n"
+        information += '\nfound {} existed assets from {} results:\n'.format(len(existed_responses), len(responses))
+        information += self.report.generate(existed_responses)
+        self.report.save_information(information)
 
     def build_features(self, responses):
         # 提取原始特征

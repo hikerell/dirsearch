@@ -1,7 +1,7 @@
 import re
 import collections
 import numpy as np
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics import silhouette_score
 import urllib
 import urllib.parse
@@ -85,6 +85,40 @@ def get_404_features_names():
         'c:(', 'c:', 'c:;'
     ]
     return names
+
+
+def identify_404_by_dbscan(data):
+    dbscan = DBSCAN()
+    labels = dbscan.fit_predict(data)
+
+    clusters = len(set(labels))
+    if clusters == 1:
+        score = 1
+    else:
+        score = silhouette_score(data, labels, metric='euclidean')
+
+    counter = collections.Counter(labels)
+    label_description = {k: {'count': v, 'ratio': v/len(labels), 'success': False}for k, v in counter.items()}
+    sorted_descriptions = sorted(label_description.values(), key=lambda m: m['count'])
+
+    max_ratio = 10 / 100
+    current_ratio = 0
+    for desc in sorted_descriptions:
+        # print(f'current_ratio={current_ratio}', desc)
+        if desc['ratio'] + current_ratio > max_ratio:
+            break
+        desc['success'] = True
+        current_ratio += desc['ratio']
+
+    cluster = {
+        'bestClusters': clusters,
+        'bestScore': score,
+        'bestK': len(label_description),
+        'labelDescription': None
+    }
+    results = [label_description[v]['success'] for v in labels]
+    cluster['labelDescription'] = {str(k): v for k, v in label_description.items()}
+    return labels, results, cluster
 
 
 def identify_404(events_features, k=5):

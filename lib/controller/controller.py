@@ -149,6 +149,7 @@ class Controller:
         )
         self.blacklists = get_blacklists(self.options.extensions)
         self.results = []
+        self.responses = []
         self.targets = options.urls
         self.start_time = time.time()
         self.passed_urls = set()
@@ -276,7 +277,7 @@ class Controller:
         self.output.warning("\nScan Task Completed, Starting Deep Analysis ...")
 
         analyzer = Analyzer(self.options, self.output, self.report)
-        analyzer.analysis_responses(self.results)
+        analyzer.analysis_responses(self.responses)
 
         self.output.warning("\nTask Completed")
 
@@ -497,6 +498,7 @@ class Controller:
         return True
 
     def reset_consecutive_errors(self, response):
+        self.responses.append(response)  # 记录所有没有抛出异常的response
         self.consecutive_errors = 0
 
     def match_callback(self, response):

@@ -38,5 +38,10 @@ class FileBaseReport:
             fd.writelines(self.generate(entries))
             fd.flush()
 
+    @locked
+    def save_information(self, information: str):
+        with open(self.output_file, 'a+') as fd:
+            fd.write(information)
+
     def generate(self, entries):
         raise NotImplementedError
