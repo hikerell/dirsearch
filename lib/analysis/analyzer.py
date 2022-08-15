@@ -1,6 +1,7 @@
 import os
 import json
 import pandas as pd
+from typing import List
 from lib.output.verbose import Output
 from lib.reports.base import FileBaseReport
 from lib.connection.response import Response
@@ -26,12 +27,10 @@ class Analyzer(object):
 
         existed_responses = []
         for result, response in zip(results, responses):
-            if response.status in [0, 301, 302, 400, 403, 404, 405]:
-                # 如果响应码为此类，判定为404, 不需要在意3XX跳转，dirsearch默认会跟随访问一次
-                continue
             if not result:
                 continue
-            existed_responses.append(response)
+            if (200 <= response.status < 300) or (500 <= response.status):
+                existed_responses.append(response)
 
         self.output.warning('\nfound {} existed assets from {} results:'.format(len(existed_responses), len(responses)))
         for response in existed_responses:
@@ -44,12 +43,13 @@ class Analyzer(object):
         information += self.report.generate(existed_responses)
         self.report.save_information(information)
 
-    def build_features(self, responses):
+    def build_features(self, responses: List[Response]):
         # 提取原始特征
         original_features = [self.get_response_features(r) for r in responses]
 
         odf = pd.DataFrame(original_features, columns=identify404.get_404_features_names())
         odf['url'] = [rsp.url for rsp in responses]
+        odf['content_type'] = [rsp.type for rsp in responses]
         odf['exists'] = 0
 
         if self.should_save_features:
@@ -67,8 +67,10 @@ class Analyzer(object):
         # 3. 清理前后响应内容长度变化，并Z-Score标准化
         ndf['body_len_change'] = odf.body_length - odf.standard_body_length
         ndf['body_len_change'] = (ndf.body_len_change - ndf.body_len_change.mean()) / ndf.body_len_change.std()
-        # 4. 清理后的响应内容Z-Score标准化
+        # 4. 清理后的响应内容长度Z-Score标准化
         ndf['body_len'] = (odf.standard_body_length - odf.standard_body_length.mean()) / odf.standard_body_length.std()
+        # 5. 响应体content-type转换为哑变量
+        ndf = pd.concat([ndf, pd.get_dummies(odf['content_type'], prefix='type')], axis=1)
 
         # ndf = (ndf-ndf.mean())/ndf.std()
         ndf.fillna(0, inplace=True)

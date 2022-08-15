@@ -27,6 +27,10 @@ def clean_url_from_response_body(request_url: bytes, response_body: bytes):
         normalized_path = multi_slash.sub(b'/', path)
         if normalized_path != path:
             response_body = response_body.replace(normalized_path, b'')
+        # 考虑url存在特殊字符编码的情况
+        decoded_path = urllib.parse.unquote(path.decode()).encode()
+        if decoded_path != path:
+            response_body = response_body.replace(decoded_path, b'')
         # TODO: 考虑windows风格的slash或者../和./的情况
     except:
         logger.exception('failed to clean url: {url} from response')
@@ -54,16 +58,18 @@ def get_404_features(request_url: bytes, response_status_code: int, response_bod
     事件404特征:
     响应码，原始响应体长度，标准化响应体长度，多个标准化响应体字符统计特征
     多个标准化响应体字符统计特征包括：<个数，>个数，/个数，{个数，}个数，:个数，"个数，,个数，=个数，(个数，)个数，;个数
+    TODO: 响应体content-type
     """
     standard_body = get_standarized_response_body(request_url, response_body)
+    # url_path = urllib.parse.unquote(urllib.parse.urlparse(request_url).path.decode()).encode()
     features = [
-        response_status_code, response_body_length, len(standard_body),
-        standard_body.count(b'<'), standard_body.count(b'>'), standard_body.count(b'/'),
+        response_status_code, response_body_length, len(standard_body),  # len(url_path),
+        standard_body.count(b'<'), standard_body.count(b'>'),  # standard_body.count(b'/'),
         standard_body.count(b'</'), standard_body.count(b'/>'), standard_body.count(b'=/'),
-        standard_body.count(b'.'), standard_body.count(b"'"),
+        # standard_body.count(b'.'), standard_body.count(b"'"),
         standard_body.count(b"["), standard_body.count(b"]"),
-        standard_body.count(b"|"), standard_body.count(b"&"),
-        standard_body.count(b"+"), standard_body.count(b"-"), standard_body.count(b"*"),
+        # standard_body.count(b"|"), standard_body.count(b"&"),
+        # standard_body.count(b"+"), standard_body.count(b"-"), standard_body.count(b"*"),
         standard_body.count(b'{'), standard_body.count(b'}'), standard_body.count(b':'),
         standard_body.count(b'"'), standard_body.count(b','), standard_body.count(b'='),
         standard_body.count(b'('), standard_body.count(b')'), standard_body.count(b';')
@@ -74,15 +80,15 @@ def get_404_features(request_url: bytes, response_status_code: int, response_bod
 def get_404_features_names():
     names = [
         'status_code', 'body_length', 'standard_body_length',
-        'c:<', 'c:>', 'c:/',
+        'c:<', 'c:>',  # 'c:/',
         'c:</', 'c:/>', 'c:=/',
-        'c:.', "c:'",
+        # 'c:.', "c:'",
         "c:[", "c:]",
-        "c:|", "c:&",
-        "c:+", "c:-", "c:*",
+        # "c:|", "c:&",
+        # "c:+", "c:-", "c:*",
         'c:{', 'c:}', 'c::',
         'c:"', 'c:,', 'c:=',
-        'c:(', 'c:', 'c:;'
+        'c:(', 'c:)', 'c:;'
     ]
     return names
 
